@@ -1,7 +1,4 @@
-/*
- * Memory allocator
- */
+#include <stdlib.h>
 
-void * vmalloc(size_t size);
-
+void* vmalloc(char * heap_start, size_t size);
 void vfree(void * ptr);

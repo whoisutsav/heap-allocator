@@ -47,7 +47,11 @@ int terminating_block(header_t * h) {
 	return is_allocated(h) && get_size(h) == 0;
 }
 
-void * vmalloc(size_t size) { // Assume size is multiple of 16 bytes, for ease of verification 
+int valid_heap(char * heap_start) {
+	return 1;
+}
+
+void * vmalloc(char * heap_start, size_t size) { // Assume size is multiple of 16 bytes, for ease of verification 
 	if (size <= 0) return NULL;
 	header_t * h = (header_t *) heap_start;
 	while (!terminating_block(h)) {
@@ -100,11 +104,11 @@ int main(int argc, char * argv[]) {
 	int block_size;
 	for (int i=0; i<10; i++) {
 		block_size = ((rand() % 9) + 1) * 16;	
-		vmalloc(block_size);
+		//vmalloc(heap_start, block_size);
 		printf("Allocated %d bytes\n", block_size);
 	}
-	vfree(heap_start);
-	print_debug((header_t *) heap_start);
+	//vfree(heap_start);
+	//print_debug((header_t *) heap_start);
 	return 0;
 }
 
