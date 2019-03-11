@@ -51,7 +51,7 @@ int valid_heap(char * heap_start) {
 	return 1;
 }
 
-void * vmalloc(char * heap_start, size_t size) { // Assume size is multiple of 16 bytes, for ease of verification 
+void * vmalloc(char * heap_start, size_t size) { // Size required to be multiple of 16 
 	if (size <= 0) return NULL;
 	header_t * h = (header_t *) heap_start;
 	while (!terminating_block(h)) {
@@ -66,7 +66,7 @@ void * vmalloc(char * heap_start, size_t size) { // Assume size is multiple of 1
 
 // No coalescing as of now
 void vfree(void * ptr) {
-	mark_free(ptr);
+	mark_free((header_t *) ptr);
 }
 
 void init() {
@@ -83,20 +83,20 @@ void init() {
 }
 
 void print_debug(header_t * start) {
-	printf("-----------Traversing Free List-----------\n");
+	//printf("-----------Traversing Free List-----------\n");
 	header_t * h = (header_t *) heap_start;
 	int i=0;
 	while(!(is_allocated(h) && get_size(h) ==0)) { // Need to account for terminating block
-		printf("Block %d at location %p\n", i, h);
-		printf("Block size: %lu\n", get_size(h));
-		printf("Allocated: %d\n\n", is_allocated(h));
+		//printf("Block %d at location %p\n", i, h);
+		//printf("Block size: %lu\n", get_size(h));
+		//printf("Allocated: %d\n\n", is_allocated(h));
 		i++;
 		h += (1 + (get_size(h)/16));
 	}	
 	// print terminating block
-	printf("Block %d at location %p\n", i, h);
-	printf("Block size: %lu\n", get_size(h));
-	printf("Allocated: %d\n\n", is_allocated(h));
+	//printf("Block %d at location %p\n", i, h);
+	//printf("Block size: %lu\n", get_size(h));
+	//printf("Allocated: %d\n\n", is_allocated(h));
 }
 
 int main(int argc, char * argv[]) {
@@ -105,7 +105,7 @@ int main(int argc, char * argv[]) {
 	for (int i=0; i<10; i++) {
 		block_size = ((rand() % 9) + 1) * 16;	
 		//vmalloc(heap_start, block_size);
-		printf("Allocated %d bytes\n", block_size);
+		//printf("Allocated %d bytes\n", block_size);
 	}
 	//vfree(heap_start);
 	//print_debug((header_t *) heap_start);
