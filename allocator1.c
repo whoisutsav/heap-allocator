@@ -27,11 +27,9 @@ char * vmalloc(size_t size) {
 	}
 }
 
-
 void vfree(void * ptr) {
 	// Do nothing.
 }
-
 
 void init(size_t size) {
 	heap_start = malloc(size);	
