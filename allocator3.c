@@ -17,6 +17,7 @@ typedef struct _list {
 }
 */
 
+// May not be necessary
 /*@	lemma reachable_trans:
 	\forall list *root, *node;
 	reachable(root, node) && \valid(node) ==> reachable(root, node->next);	
@@ -29,31 +30,51 @@ typedef struct _list {
 
 /*@ predicate finite{L}(list* root) = reachable(root,\null); */
 
+/*@ predicate has_block{L}(list* root, size_t size) =
+		\valid(root) &&
+		\exists list* node; \valid(node) && reachable(root, node) && node->size >= size;
+*/
+
+/* @ lemma reachable_choice{L}:
+  \forall list *root, *node;
+  \valid(root) && \valid(node) && well_formed(root) && reachable(rootl,node) ==>
+  root == node || reachable(root->next, node);
+*/
+
+/*@ lemma has_block_choice{L}:
+	\forall list* node; \forall size_t size;
+	\valid(node) && has_block(node, size) ==>
+	node->size >= size || has_block(node->next, size); 
+*/
+
 /*@
-	requires \valid(root);
+	//requires \valid(root);
 	requires well_formed(root);
 	requires finite(root);
 	assigns \nothing;
-	ensures
-	\forall list* l;
-	\valid(l) && reachable(root,l) ==>
-	\result >= l->size;
-	ensures
-	\exists list* l;
-	\valid(l) && reachable(root,l) && \result == l->size;
+	behavior find:
+		assumes has_block(root, size);
+		ensures \valid(\result);
+		ensures \result->size >= size;
+	behavior not_find:
+		assumes !has_block(root, size);
+		ensures \result == \null;
+	complete behaviors find, not_find;
+	disjoint behaviors find, not_find;
 */
-int max_list(list* root, size_t size) {
+list* find_block(list* root, size_t size) {
 	list* current = root;
-	int max = current->size;
 	/*@
 	  loop invariant reachable(root, current);
 	  loop invariant well_formed(current);
+	  loop invariant has_block(root,size) <==> has_block(current, size); 
 	  loop assigns current;
 	*/
-	while(current->next) {
-		//@assert \valid(current->next);
-		current = current->next;
-		if (current->size > max) max = current->size;
+	while(current) {
+		//@assert \valid(current);
+		if (current->size >= size) return current;
+		else 
+			current = current->next;
 	}
-	return max;
+	return current;
 }
