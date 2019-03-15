@@ -13,7 +13,7 @@ char * heap_start = NULL;
 
 
 /*@ predicate _lsb_set(unsigned int i) = 
-	(i & ((unsigned int) 1)) > (unsigned int) 0;		
+	(unsigned int) (i & ((unsigned int) 1)) > (unsigned int) 0;		
 */
 
 /*@ logic integer _get_size(unsigned int i) =
@@ -48,10 +48,10 @@ void mark_allocated(header_t * h) {
 */
 void mark_free(header_t * h) {
 	unsigned int mask = ~((unsigned int) 0) ^ (unsigned int) 1;
-	h->info = mask & h->info;   
+	h->info = ((unsigned int) mask) & h->info;   
 }
 
-/*@ requires \valid(h);
+/* requires \valid(h);
 	ensures \result == _get_size(h->info);
 */
 unsigned int get_size(header_t * h) {
@@ -75,6 +75,8 @@ header_t * split_block(header_t * h, unsigned int size) {
 	return h+1;
 }
 
+/*@ requires \valid(h);
+*/
 int terminating_block(header_t * h) {
 	return is_allocated(h) && get_size(h) == 0;
 }
@@ -98,10 +100,12 @@ void * vmalloc(char * heap_start, size_t size) { // Size required to be multiple
 }
 */
 
-// No coalescing as of now
+/*
 void vfree(header_t * ptr) {
 	mark_free(ptr);
 }
+*/
+
 /*
 void init() {
 	if (heap_start != NULL) //already initialized?
