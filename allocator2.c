@@ -1,43 +1,75 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
-#include "allocator.h"
 
 #define HEAP_SIZE 4096 
 
 typedef struct {
-  size_t info;
+  unsigned int info;
   void * empty; // Used to align header to 16 bytes
 } header_t;
 
 char * heap_start = NULL;
 
-int is_allocated(header_t * h) {
-	return h->info & 1;	
+
+/*@ predicate _lsb_set(unsigned int i) = 
+	(i & ((unsigned int) 1)) > (unsigned int) 0;		
+*/
+
+/*@ logic integer _get_size(unsigned int i) =
+	(~((unsigned int) 0) ^ 15) & i;	
+*/
+
+// TODO valid condition
+/*@ requires \valid(h);
+	behavior allocated:
+		assumes _lsb_set(h->info);
+		ensures \result > 0;
+	behavior not_allocated:
+		assumes !_lsb_set(h->info);
+		ensures \result == 0;
+	disjoint behaviors;
+	complete behaviors;
+*/
+unsigned int is_allocated(header_t * h) {
+	return h->info & (unsigned int) 1;	
 }
 
+/*@ requires \valid(h);
+	ensures _lsb_set(h->info);
+*/
 void mark_allocated(header_t * h) {
 	h->info = h->info | 1;
 }
 
+// TODO postcondition
+/*@ requires \valid(h);
+	ensures !_lsb_set(h->info);
+*/
 void mark_free(header_t * h) {
-	size_t mask = 0;
-	h->info = (~mask ^ 1) & h->info;   
+	unsigned int mask = ~((unsigned int) 0) ^ (unsigned int) 1;
+	h->info = mask & h->info;   
 }
 
-unsigned long get_size(header_t * h) {
-	size_t mask = 0;
-	return ((~mask ^ 15) & h->info);
+/*@ requires \valid(h);
+	ensures \result == _get_size(h->info);
+*/
+unsigned int get_size(header_t * h) {
+	size_t mask = ~((unsigned int) 0) ^ 15;
+	return mask & h->info;
 }
 
+// TODO
 void mark_size(header_t * h, size_t size) {
 	size_t mask = 0;
 	h->info = size | (15 & h->info);
 }
 
-// Returns pointer to newly created block
-void * split_block(header_t * h, size_t size) {
-	size_t new_size = get_size(h) - size - 16;
+/*@ requires \valid(h+ (0..((size/16)+1)));
+	ensures \result == (header_t *) h + 1;
+*/
+header_t * split_block(header_t * h, unsigned int size) {
+	unsigned int new_size = get_size(h) - size - 16;
 	h->info = size | 1;
 	(h + 1 + (size/16))->info = new_size;
 	return h+1;
@@ -51,6 +83,7 @@ int valid_heap(char * heap_start) {
 	return 1;
 }
 
+/*
 void * vmalloc(char * heap_start, size_t size) { // Size required to be multiple of 16 
 	if (size <= 0) return NULL;
 	header_t * h = (header_t *) heap_start;
@@ -63,12 +96,13 @@ void * vmalloc(char * heap_start, size_t size) { // Size required to be multiple
 	
 	return NULL;
 }
+*/
 
 // No coalescing as of now
-void vfree(void * ptr) {
-	mark_free((header_t *) ptr);
+void vfree(header_t * ptr) {
+	mark_free(ptr);
 }
-
+/*
 void init() {
 	if (heap_start != NULL) //already initialized?
 		return;		
@@ -81,7 +115,8 @@ void init() {
 	mark_size((header_t *) (heap_start + (HEAP_SIZE - 16)), 0);
 	mark_allocated((header_t *) (heap_start + (HEAP_SIZE - 16)));
 }
-
+*/
+/*
 void print_debug(header_t * start) {
 	//printf("-----------Traversing Free List-----------\n");
 	header_t * h = (header_t *) heap_start;
@@ -98,7 +133,9 @@ void print_debug(header_t * start) {
 	//printf("Block size: %lu\n", get_size(h));
 	//printf("Allocated: %d\n\n", is_allocated(h));
 }
+*/
 
+/*
 int main(int argc, char * argv[]) {
 	init();
 	int block_size;
@@ -111,4 +148,5 @@ int main(int argc, char * argv[]) {
 	//print_debug((header_t *) heap_start);
 	return 0;
 }
+*/
 
