@@ -127,6 +127,7 @@ void mark_free(header_t * h) {
 }
 
 /*@ requires \valid(h);
+	requires size <= UINT_MAX/16;
 	ensures _get_size(h) == size;
 	ensures \valid(h);
 	ensures h == \old(h);
@@ -135,24 +136,29 @@ void mark_size(header_t * h, unsigned int size) {
 	h->info = ((h->info << 28) >> 28) | (size << 4);
 }
 
+/*@ lemma bit_shift_bounded:
+		\forall unsigned int x; 0 <= x < UINT_MAX/16 ==>
+			(x << 4) >> 4 == x;
+*/
+
 /*@ 
 	requires size > 0;
-	requires _get_size(h) > size; 
+	requires size < _get_size(h) <= UINT_MAX/16; 
 	requires \valid(h+ (0..(size+1)));
 	assigns (h + 1 + size)->info; 
 	assigns h->info;
 	ensures _lsb_set(h->info);
-	ensures size == _get_size(h);
+	ensures _get_size(h) == size;
 	ensures (_get_size(\old(h)) - (size + 1)) == _get_size((h + 1 + size));
 	ensures \valid(h + 1 + size);
 	ensures \result == (header_t *) h + 1;
 	ensures \valid(\result);
 */
 header_t * split_block(header_t * h, unsigned int size) {
-	unsigned int next_size = get_size(h) - (size + 1);
-	(h + 1 + size)->info = next_size;
+	//unsigned int next_size = get_size(h) - (size + 1);
+	//(h + 1 + size)->info = next_size;
 	h->info = (size << 4);
-	mark_allocated(h);
+	//mark_allocated(h);
 	return h+1;
 }
 
