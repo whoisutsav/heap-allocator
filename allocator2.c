@@ -184,16 +184,14 @@ void * vmalloc(header_t * start, unsigned int size) {
 		loop invariant size > 0;
 	*/
 	while(!terminating_block(h)) {
-		/*if(!is_allocated(h) && (get_size(h) > size)) {
+		if(!is_allocated(h) && (get_size(h) > size)) {
 			return split_block(h, size);
 		} else if (!is_allocated(h) && (get_size(h) == size)) {
 			mark_allocated(h);
 			return h+1;
 		} else {
-			//assert reachable(start, h);
 			h += (1 + get_size(h));
-		}*/
-		h += (1 + get_size(h));
+		}
 	}
 	
 	return NULL;
