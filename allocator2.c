@@ -3,7 +3,8 @@
 #include <limits.h>
 
 // Global variable is used instead of define, which allows value to be used in annotations 
-const int HEAP_SIZE = 4096;
+// All sizes are in 16-byte chunks
+const int HEAP_SIZE = 256;
 
 typedef struct {
   unsigned int info;
@@ -13,20 +14,18 @@ typedef struct {
 header_t * heap_start = NULL;
 
 /*@ logic integer _get_size(header_t * h) =
-	((h->info >> 4) << 4);	
+	h->info >> 4;	
 */
 
-// TODO - remove?
-/*@
-	inductive valid{L} (header_t * start) {
-	case initial_valid{L}:
-	\forall header_t * start; valid(start);
-	case next_reachable{L}:
-	\forall header_t * h;
-	valid(h) ==>
-	valid((header_t *) (h + (_get_size(h)/16)));
-}
+/*@ requires \valid(h);
+	ensures \result == _get_size(h);
+	ensures \valid(h);
+	assigns \nothing;
 */
+unsigned int get_size(header_t * h) {
+	return (h->info >> 4);
+}
+
 
 /*@ predicate _lsb_set(unsigned int i) = 
 	(unsigned int) (i & ((unsigned int) 1)) > (unsigned int) 0;		
@@ -48,7 +47,51 @@ header_t * heap_start = NULL;
         \forall unsigned int x; (x >> 32) ==  0;
 */
 
+/*@ predicate _terminating(header_t * h) = 
+		_lsb_set(h->info) && !_get_size(h);
+*/
+
+/*@
+	inductive reachable{L} (header_t* start, header_t* h) {
+	case start_reachable{L}:
+		\forall header_t* start; reachable(start,start);
+	case next_reachable{L}:
+		\forall header_t* start, *h; reachable((header_t *) (start + 1 + _get_size(start)), h) ==>
+		reachable(start,h);
+}
+*/
+
+/*@	lemma reachable_trans:
+	\forall header_t *start, *h;
+	reachable(start, h) && \valid(h) ==> reachable(start, (h + 1 + _get_size(h)));	
+*/ 
+
+/*@	lemma reachable_size_gt:
+	\forall header_t *start, *h;
+	reachable(start, h) && \valid(h) ==> 
+		_get_size(h) > 0 || _terminating(h);	
+*/ 
+
+/*@ predicate finite{L}(header_t * start) = 
+		\forall header_t * start; \exists header_t * h; reachable(start, h) && _terminating(h);
+*/
+
+/*@ predicate well_formed{L}(header_t * start) =
+		\forall header_t *start, *h; reachable(start, h) ==>
+			\valid(h) && h \in (start+ (0..HEAP_SIZE));
+*/
+
+/*@ lemma size_gt:
+	\forall header_t * h; \forall unsigned int size; (_get_size(h) > size) ==>
+		\valid(h+ (0..(size+1)));
+*/
+
+/*@ lemma non_terminating_block:
+		\forall header_t *start, *h; (reachable(start, h) && !_terminating(h)) ==> \valid(h + 1 + _get_size(h));
+*/
+
 /*@ requires \valid(h);
+	assigns \nothing;
 	behavior allocated:
 		assumes _lsb_set(h->info);
 		ensures \result > 0;
@@ -67,6 +110,8 @@ unsigned int is_allocated(header_t * h) {
 /*@ requires \valid(h);
 	ensures _lsb_set(h->info);
 	ensures \valid(h);
+	ensures h == \old(h);
+	assigns h->info;
 */
 void mark_allocated(header_t * h) {
 	h->info = h->info | 1;
@@ -75,71 +120,80 @@ void mark_allocated(header_t * h) {
 /*@ requires \valid(h);
 	ensures !_lsb_set(h->info);
 	ensures \valid(h);
+	ensures h == \old(h);
 */
 void mark_free(header_t * h) {
 	h->info = (~0 ^ 1) & h->info;   
 }
 
 /*@ requires \valid(h);
-	ensures \result == (unsigned int) _get_size(h);
-	ensures \valid(h);
-*/
-unsigned int get_size(header_t * h) {
-	return (h->info >> 4) << 4;
-}
-
-/*@ requires \valid(h);
-	requires h->info % 16 == 0;
 	ensures _get_size(h) == size;
 	ensures \valid(h);
+	ensures h == \old(h);
 */
 void mark_size(header_t * h, unsigned int size) {
-	h->info = ((h->info << 28) >> 28) | ((size >> 4) << 4);
+	h->info = ((h->info << 28) >> 28) | (size << 4);
 }
 
-/*@ requires \valid(h+ (0..((size/16)+1)));
+/*@ 
 	requires size > 0;
-	requires size <= _get_size(h);
-	behavior fills_entire_block:
-		assumes _get_size(h) == size;
-	behavior splits_block:
-		assumes _get_size(h) < size;
-		assigns ((header_t*) (h + 1 + (size/16)))->info; 
+	requires _get_size(h) > size; 
+	requires \valid(h+ (0..(size+1)));
+	assigns (h + 1 + size)->info; 
+	assigns h->info;
 	ensures _lsb_set(h->info);
-	ensures _get_size(h) == size;
-	ensures \valid(h + 1 + (size/16));
+	ensures size == _get_size(h);
+	ensures (_get_size(\old(h)) - (size + 1)) == _get_size((h + 1 + size));
+	ensures \valid(h + 1 + size);
 	ensures \result == (header_t *) h + 1;
 	ensures \valid(\result);
 */
 header_t * split_block(header_t * h, unsigned int size) {
-	if (get_size(h) > size) (h + 1 + (size/16))->info = get_size(h) - size - 16;
-	h->info = size;
+	unsigned int next_size = get_size(h) - (size + 1);
+	(h + 1 + size)->info = next_size;
+	h->info = (size << 4);
 	mark_allocated(h);
 	return h+1;
 }
 
+
 /*@ requires \valid(h);
- 	ensures \result <==> _lsb_set(h->info) && (_get_size(h) == 0); 
+	assigns \nothing;
+ 	ensures \result <==> _terminating(h); 
 	ensures \valid(h);
+	ensures h == \old(h);
 */
 int terminating_block(header_t * h) {
-	return is_allocated(h) && (get_size(h) == 0);
+	return is_allocated(h) && !get_size(h);
 }
 
-/*@ requires \valid(heap_start+ (0..(HEAP_SIZE/16)));
-	requires size % 16 == 0;
+
+/*@ requires HEAP_SIZE > 0; 
+ 	requires \valid(start+ (0..(HEAP_SIZE-1)));
+	requires finite(start);
+	requires well_formed(start);
+	ensures \valid((header_t *) \result) || (\result == \null);
  */
-void * vmalloc(header_t * heap_start, unsigned int size) { // Size required to be multiple of 16 
+void * vmalloc(header_t * start, unsigned int size) {  
 	if (size <= 0) return NULL;
-	header_t * h = heap_start;
-	/*@ loop invariant \valid(h);
+	header_t * h = start;
+	/*@ 
+		loop invariant \valid(h);
+		loop invariant reachable(start, h);
+		loop invariant well_formed(h);
 		loop invariant size > 0;
 	*/
-	while (!terminating_block(h)) {
-		if(!is_allocated(h) && get_size(h) > size) 
+	while(!terminating_block(h)) {
+		/*if(!is_allocated(h) && (get_size(h) > size)) {
 			return split_block(h, size);
-		else
-		   	h += (1 + (get_size(h)/16));
+		} else if (!is_allocated(h) && (get_size(h) == size)) {
+			mark_allocated(h);
+			return h+1;
+		} else {
+			//assert reachable(start, h);
+			h += (1 + get_size(h));
+		}*/
+		h += (1 + get_size(h));
 	}
 	
 	return NULL;
