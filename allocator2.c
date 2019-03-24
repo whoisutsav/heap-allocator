@@ -13,23 +13,14 @@ typedef struct {
 
 header_t * heap_start = NULL;
 
-/*@ lemma bit_shift_bounded:
+/* lemma bit_shift_unshift_bounded:
 		\forall unsigned int x; (0 <= x < UINT_MAX/16) ==>
-			(((x << 4) >> 4) == x);
+			((x << 4) >> 4) == x;
 */
 
 /*@ logic integer _get_size(unsigned int x) =
 		(x >> 4);	
 */
-
-/*@ requires \valid(h);
-	ensures \result == _get_size(h->info);
-	assigns \nothing;
-*/
-unsigned int get_size(header_t * h) {
-	return (h->info >> 4);
-}
-
 
 /*@ predicate _lsb_set(unsigned int i) = 
 	(i & 1) == 1;		
@@ -39,7 +30,7 @@ unsigned int get_size(header_t * h) {
 	\forall unsigned int x; !_lsb_set((unsigned int) (((unsigned int) (~0 ^ 1)) & x)); 
 */
 
-/*@ lemma bit_or_rshift_dist:
+/*  lemma bit_or_rshift_dist:
         \forall unsigned int x, y; \forall unsigned int a; (((x|y)>>a) == ((x>>a)|(y>>a)));
     lemma bit_or_lshift_dist:
         \forall unsigned int x, y; \forall integer a; ((x|y)<<a) == ((x<<a)|(y<<a));
@@ -50,8 +41,6 @@ unsigned int get_size(header_t * h) {
     lemma bit_total_shift:
         \forall unsigned int x; (x >> 32) ==  0;
 */
-
-
 
 /*@ predicate _terminating(header_t * h) = 
 		_lsb_set(h->info) && !_get_size(h->info);
@@ -67,12 +56,12 @@ unsigned int get_size(header_t * h) {
 }
 */
 
-/*@	lemma reachable_trans:
+/*	lemma reachable_trans:
 	\forall header_t *start, *h;
 	reachable(start, h) && \valid(h) ==> reachable(start, (h + 1 + _get_size(h->info)));	
 */ 
 
-/*@	lemma reachable_size_gt:
+/*	lemma reachable_size_gt:
 	\forall header_t *start, *h;
 	reachable(start, h) && \valid(h) ==> 
 		_get_size(h->info) > 0 || _terminating(h);	
@@ -84,15 +73,15 @@ unsigned int get_size(header_t * h) {
 
 /*@ predicate well_formed{L}(header_t * start) =
 		\forall header_t *start, *h; reachable(start, h) ==>
-			\valid(h) && h \in (start+ (0..HEAP_SIZE));
+			\valid(h) && h \in (start+ (0..HEAP_SIZE)) && _get_size(h->info) < UINT_MAX/16;
 */
 
-/*@ lemma size_gt:
+/* lemma size_gt:
 	\forall header_t * h; \forall unsigned int size; (_get_size(h->info) > size) ==>
 		\valid(h+ (0..(size+1)));
 */
 
-/*@ lemma non_terminating_block:
+/* lemma non_terminating_block:
 		\forall header_t *start, *h; (reachable(start, h) && !_terminating(h)) ==> \valid(h + 1 + _get_size(h->info));
 */
 
@@ -131,32 +120,42 @@ void mark_free(header_t * h) {
 }
 
 /*@ requires \valid(h);
+	ensures \result == _get_size(h->info);
+	assigns \nothing;
+*/
+unsigned int get_size(header_t * h) {
+	return (h->info >> 4);
+}
+
+/*@ requires \valid(h);
 	requires 0 < size < UINT_MAX/16;
-	ensures (unsigned int) (h->info >> 4) == size;
+	ensures (unsigned int) _get_size(h->info) == size;
 	ensures \valid(h);
 	ensures h == \old(h);
 */
 void mark_size(header_t * h, unsigned int size) {
-	h->info = (size << 4);
-	//h->info = ((h->info << 28) >> 28) | (size << 4);
+	h->info = ((h->info << 28) >> 28) | (size << 4);
 }
 
 /*@ 
-	requires size > 0;
-	requires size < _get_size(h->info) <= UINT_MAX/16; 
+	requires _get_size(h->info) < UINT_MAX/16;
+	requires 0 < size < _get_size(h->info); 
 	requires \valid(h+ (0..(size+1)));
+	requires !_lsb_set(h->info);
 	assigns (h + 1 + size)->info; 
 	assigns h->info;
 	ensures _lsb_set(h->info);
+	ensures !_lsb_set((h + 1 + size)->info);
 	ensures _get_size(h->info) == size;
-	ensures (_get_size(\old(h->info)) - (size + 1)) == _get_size((h + 1 + size)->info);
+	ensures _get_size((h + 1 + size)->info) == (_get_size(\old(h->info)) - (size + 1));
 	ensures \valid(h + 1 + size);
 	ensures \result == (header_t *) h + 1;
 	ensures \valid(\result);
+	ensures reachable(h, (h + 1 + _get_size(h->info)));
 */
 header_t * split_block(header_t * h, unsigned int size) {
 	unsigned int next_size = get_size(h) - (size + 1);
-	(h + 1 + size)->info = next_size;
+	(h + 1 + size)->info = (next_size << 4);
 	h->info = (size << 4);
 	mark_allocated(h);
 	return h+1;
@@ -175,26 +174,27 @@ int terminating_block(header_t * h) {
 
 
 /*@ requires HEAP_SIZE > 0; 
- 	requires \valid(start+ (0..(HEAP_SIZE-1)));
-	requires finite(start);
-	requires well_formed(start);
+	requires UINT_MAX/16 >= size > 0;
+ 	requires \valid(heap_start+ (0..(HEAP_SIZE-1)));
+	requires finite(heap_start);
+	requires well_formed(heap_start);
 	ensures \valid((header_t *) \result) || (\result == \null);
  */
-void * vmalloc(header_t * start, unsigned int size) {  
+void * vmalloc(unsigned int size) {  
 	if (size <= 0) return NULL;
-	header_t * h = start;
+	header_t * h = heap_start;
 	/*@ 
 		loop invariant \valid(h);
-		loop invariant reachable(start, h);
+		loop invariant reachable(heap_start, h);
 		loop invariant well_formed(h);
-		loop invariant size > 0;
+		loop assigns \nothing;
 	*/
 	while(!terminating_block(h)) {
 		if(!is_allocated(h) && (get_size(h) > size)) {
-			return split_block(h, size);
+			return (void *) split_block(h, size);
 		} else if (!is_allocated(h) && (get_size(h) == size)) {
 			mark_allocated(h);
-			return h+1;
+			return (void*) (h+1);
 		} else {
 			h += (1 + get_size(h));
 		}
@@ -204,10 +204,11 @@ void * vmalloc(header_t * start, unsigned int size) {
 }
 
 /*@ requires \valid(ptr);
-	ensures \valid(ptr);
+	requires \valid(ptr - 1);
+	ensures !_lsb_set((ptr-1)->info);
 */
 void vfree(header_t * ptr) {
-	mark_free(ptr);
+	mark_free(ptr-1);
 }
 
 void init() {
@@ -215,12 +216,12 @@ void init() {
 		return;		
 
    	heap_start = malloc(sizeof(char) * HEAP_SIZE); 
-	mark_size((header_t *) heap_start, HEAP_SIZE - 32);
+	mark_size((header_t *) heap_start, HEAP_SIZE - 2);
 	mark_free((header_t *) heap_start);
 
 	// Mark terminating block
-	mark_size((header_t *) (heap_start + (HEAP_SIZE - 16)), 0);
-	mark_allocated((header_t *) (heap_start + (HEAP_SIZE - 16)));
+	mark_size((header_t *) (heap_start + (HEAP_SIZE - 1)), 0);
+	mark_allocated((header_t *) (heap_start + (HEAP_SIZE - 1)));
 }
 
 
@@ -229,28 +230,29 @@ void print_debug(header_t * start) {
 	header_t * h = (header_t *) heap_start;
 	int i=0;
 	while(!(is_allocated(h) && get_size(h) ==0)) { // Need to account for terminating block
-		//printf("Block %d at location %p\n", i, h);
-		//printf("Block size: %lu\n", get_size(h));
-		//printf("Allocated: %d\n\n", is_allocated(h));
+		printf("Block %d at location %p\n", i, h);
+		printf("Block size: %u\n", get_size(h));
+		printf("Allocated: %u\n\n", is_allocated(h));
 		i++;
 		h += (1 + get_size(h));
 	}	
 	// print terminating block
-	//printf("Block %d at location %p\n", i, h);
-	//printf("Block size: %lu\n", get_size(h));
-	//printf("Allocated: %d\n\n", is_allocated(h));
+	printf("Block %d at location %p\n", i, h);
+	printf("Block size: %u \n", get_size(h));
+	printf("Allocated: %u\n", is_allocated(h));
 }
 
 int main(int argc, char * argv[]) {
 	init();
 	unsigned int block_size;
 	for (int i=0; i<10; i++) {
-		block_size = ((rand() % 9) + 1) * 16;	
-		vmalloc(heap_start, block_size);
+		block_size = ((rand() % 9) + 1);	
+		vmalloc(block_size);
 		printf("Allocated %u bytes\n", block_size);
 	}
 	printf("\n");
 	vfree(heap_start);
+	printf ("Freed location at %p\n\n", heap_start);
 	printf("\n");
 	print_debug((header_t *) heap_start);
 	return 0;
